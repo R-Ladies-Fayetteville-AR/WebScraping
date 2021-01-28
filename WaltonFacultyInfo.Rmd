@@ -1,0 +1,167 @@
+---
+title: "WaltonEmails"
+author: "Austin Wilkins"
+date: "1/22/2021"
+output: html_document
+---
+# Web Scrape of Faculty Information
+
+This document will outline the process of scraping names, emails, and phone numbers from Walton College faculty lists. We will start with a simple scrape of a single department, and then expand our code to cover many departments.  
+  
+  
+We will use the following libraries:  
+tidyverse: This is a suite of R packages that are used in data analysis.  
+Rvest: This is the secific packages that holds web scraping tools.
+
+
+```{r setup, message=FALSE}
+rm(list=ls()) # to clean the environment
+library(tidyverse)
+library(rvest)
+```
+
+## Find the data
+First we must find the data that we're interested in. For this example, we'll be using a Walton college faculty list found at this URL:
+https://walton.uark.edu/departments/accounting/directory.php
+
+To pull the HTML from this page into R, we can use the "read_html()" function from the Rvest package. It's usually good to run this as a separate line, so that it can be run once, and not repeatedly over the script. 
+
+```{r}
+page <- read_html('https://walton.uark.edu/departments/accounting/directory.php')
+```
+
+
+When inspecting the HTML from this page, we need to find the tags that hold our data of interest. Most tags have attributes associated with them, such as class, id, href, source, and many others. Class and id are easy to search for, and have special characters that we can use to indicate that we're searching for these attributes. 
+
+Searching for class use a . (".classname")  
+Searching for id use a # ("#idname")
+
+**In this HTML, we find the following information.**  
+Faculty info box: class="directory-box"  
+Faculty names: class="name"  
+Individual emails: class="email"  
+Phone numbers: class="phone"  
+
+
+Here we can find these three bits of information and put save them (in this case into tibbles, which are just nice dataframes). We can then bind then together, name the columns, and we have our information!
+
+```{r, message=FALSE}
+# Gather emails from tag with class="email"
+Email <- page %>% 
+  html_nodes('.directory-box') %>% 
+  html_nodes('.email') %>% 
+  html_text() %>% 
+  tibble()
+
+# Gather names from tag with class="name"
+Name <- page %>% 
+  html_nodes('.directory-box') %>% 
+  html_nodes('.name') %>% 
+  html_text() %>% 
+  tibble()
+
+# Gather phone numbers from tag with class="phone"
+Phone <- page %>% 
+  html_nodes('.directory-box') %>% 
+  html_nodes('.phone') %>% 
+  html_text() %>% 
+  tibble()
+
+#bind into single table
+Table <- Name %>% bind_cols(Email) %>% bind_cols(Phone)
+colnames(Table) <- c('Name','Email','Phone')
+
+```
+
+
+## Removing the PHD Students from the list
+We have our information! However this list includes PhD students as well. While this may be fine, this is a good example of how to use the "inspect element"(firefox) or "developer view"(chrome) to choose specific elements from the page. In these views, we can choose a specific element from the page, and be shown the html tag that relates to that element. We can then right click and copy out either the xpath or the css selector for this specific element.
+
+The xpath is a method of choosing an element based on it's position within the HTML tags, similar to how a computer file is positioned within a directory tree. The faculty box is found under the following xpath: 
+/html/body/div[4]/div/div[2]/div[2]/div[1]  
+
+
+This may be difficult to read, but don't worry. The computer will know exactly where to look.
+
+
+```{r, message=FALSE}
+
+Email <- page %>% 
+  html_nodes(xpath='/html/body/div[4]/div/div[2]/div[2]/div[1]') %>% 
+  html_nodes('.email') %>% 
+  html_text() %>% 
+  tibble()
+
+Name <- page %>% 
+  html_nodes(xpath='/html/body/div[4]/div/div[2]/div[2]/div[1]') %>% 
+  html_nodes('.name') %>% 
+  html_text() %>% 
+  tibble()
+
+Phone <- page %>% 
+  html_nodes(xpath='/html/body/div[4]/div/div[2]/div[2]/div[1]') %>% 
+  html_nodes('.phone') %>% 
+  html_text() %>% 
+  tibble()
+
+FacTable <- Name %>% bind_cols(Email) %>% bind_cols(Phone)
+colnames(FacTable) <- c('Name','Email','Phone')
+
+
+```
+
+And there it is! We've gathered the names, emails, and phone numbers from the accounting department of the Walton College. But we have to ask ourselves, was it worth the effort to write a wep scraper instead of just copy/pasting this information? With a small amount of data, it may not make sense to write a whole program. However, now that we've figured out the accounting department, we can run this same code on all Walton college departments, and gather the information from them as well.
+
+
+
+## Repetition
+
+There are a number of departments in the Walton College, and they all seem to have the same layout. So we can create a list of each department URL, then run our code as a function on each item in the list. This will build the Name/Email/Phone list for each faculty member in each department.  
+
+
+Here we are making a list of all Walton College departments that use this layout.
+```{r}
+depts <- c("accounting","economics","finance","information-systems","management","marketing","sevi","supplychain")
+depts <- paste0("https://walton.uark.edu/departments/",depts,"/directory.php")
+
+
+```
+
+And now we can copy the code that we wrote earlier, and wrap in in a function galled "gather". This function will take a single argument, the department URL, and scrape the same information that we gathered earlier.
+```{r}
+gather <- function(dept){
+  
+  print(dept)
+  page <- read_html(dept)
+  Email <- page %>% 
+    html_nodes('.email') %>% 
+    html_text() %>% 
+    tibble()
+
+  Name <- page %>% 
+    html_nodes('.name') %>% 
+    html_text() %>% 
+    tibble()
+  
+  Phone <- page %>% 
+    html_nodes('.phone') %>% 
+    html_text() %>% 
+    tibble()
+  
+  FacTable <- Name %>% bind_cols(Email) %>% bind_cols(Phone)
+  colnames(FacTable) <- c('Name','Email','Phone')
+  
+  return(FacTable)
+}
+```
+
+Great! And now we can run this function on each item in our department list using the lapply function (list-apply). This will run gather() on each item in the list 'depts' and return a table for each one. Finally we can bind these rows together to form a single table.
+
+
+```{r}
+tables <- depts %>% lapply(gather)
+FacultyList <- bind_rows(tables)
+```
+
+And now we have the information from over 200 faculty members of the Walton College! 
+
